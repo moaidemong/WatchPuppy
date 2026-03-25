@@ -31,6 +31,10 @@ Current:
 - binary dataset:
   - positive: `failed_get_up_attempt`
   - negative: `non_target`
+- stratified split manifests:
+  - `train.csv`
+  - `val.csv`
+  - `test.csv`
 
 ### 3. Model
 

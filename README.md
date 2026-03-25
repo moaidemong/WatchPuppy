@@ -78,6 +78,20 @@ By default this will:
 - write a binary manifest to:
   - `data/processed/gen1_gen5_failed_get_up_binary.csv`
 
+## Dataset Splits
+
+Create stratified train/val/test manifests with:
+
+```bash
+python scripts/create_dataset_splits.py
+```
+
+Default split ratios:
+
+- train: `0.70`
+- val: `0.15`
+- test: `0.15`
+
 ## Architecture Direction
 
 The codebase is split so that input connectors can change later without
