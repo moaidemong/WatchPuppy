@@ -51,6 +51,22 @@ class TorchSnapshotDataset:
             image = self.transform(image)
         return image, entry.label, entry.event_id
 
+    def class_counts(self) -> dict[int, int]:
+        counts = {0: 0, 1: 0}
+        for entry in self.entries:
+            counts[entry.label] = counts.get(entry.label, 0) + 1
+        return counts
+
+
+def compute_balanced_class_weights(dataset: TorchSnapshotDataset) -> tuple[float, float]:
+    counts = dataset.class_counts()
+    total = counts[0] + counts[1]
+    if total == 0:
+        raise ValueError("dataset is empty")
+    weight_0 = total / (2 * max(counts[0], 1))
+    weight_1 = total / (2 * max(counts[1], 1))
+    return float(weight_0), float(weight_1)
+
 
 @dataclass(frozen=True)
 class SplitPaths:

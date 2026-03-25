@@ -31,12 +31,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--output-dir",
         default="/home/moai/Workspace/Codex/WatchPuppy/data/interim/models",
     )
-    parser.add_argument("--model-name", default="simple_cnn")
+    parser.add_argument(
+        "--model-name",
+        default="simple_cnn",
+        choices=["simple_cnn", "resnet18", "mobilenet_v3_small"],
+    )
     parser.add_argument("--image-size", type=int, default=224)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--learning-rate", type=float, default=1e-3)
     parser.add_argument("--device", default="cpu")
+    parser.add_argument(
+        "--class-weighting",
+        choices=["none", "balanced"],
+        default="balanced",
+    )
     return parser
 
 
@@ -54,7 +63,13 @@ def main() -> int:
         return 1
 
     from watchpuppy.models import build_model
-    from watchpuppy.training import TorchSnapshotDataset, create_image_transform, evaluate_epoch, fit
+    from watchpuppy.training import (
+        TorchSnapshotDataset,
+        compute_balanced_class_weights,
+        create_image_transform,
+        evaluate_epoch,
+        fit,
+    )
 
     train_dataset = TorchSnapshotDataset(
         manifest_path=Path(args.train_manifest),
@@ -72,6 +87,11 @@ def main() -> int:
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
+    class_weights = (
+        compute_balanced_class_weights(train_dataset)
+        if args.class_weighting == "balanced"
+        else None
+    )
 
     model = build_model(model_name=args.model_name, num_classes=2)
     history = fit(
@@ -81,13 +101,20 @@ def main() -> int:
         device=args.device,
         epochs=args.epochs,
         learning_rate=args.learning_rate,
+        class_weights=class_weights,
     )
-    test_metrics = evaluate_epoch(model, test_loader, device=args.device)
+    test_metrics = evaluate_epoch(
+        model,
+        test_loader,
+        device=args.device,
+        class_weights=class_weights,
+    )
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    model_path = output_dir / "failed_get_up_simple_cnn.pt"
-    metrics_path = output_dir / "failed_get_up_simple_cnn.metrics.json"
+    stem = f"failed_get_up_{args.model_name}"
+    model_path = output_dir / f"{stem}.pt"
+    metrics_path = output_dir / f"{stem}.metrics.json"
     torch.save(model.state_dict(), model_path)
     metrics_path.write_text(
         json.dumps(
@@ -98,6 +125,8 @@ def main() -> int:
                 "epochs": args.epochs,
                 "learning_rate": args.learning_rate,
                 "device": args.device,
+                "class_weighting": args.class_weighting,
+                "class_weights": class_weights,
                 "history": history,
                 "test_metrics": test_metrics,
             },

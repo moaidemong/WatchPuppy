@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WatchDog Evaluation Batches</title>
+    <link rel="stylesheet" href="/static/app.css?v=20260325d" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="toolbar">
+        <div>
+          <h1>WatchDog Evaluation Batches</h1>
+          <p>기존 아티팩트 재평가 결과 조회</p>
+        </div>
+        <div class="toolbar-actions">
+          <a href="/">리뷰로 돌아가기</a>
+          <button id="reload-btn" type="button">새로고침</button>
+        </div>
+      </header>
+
+      <section class="filters">
+        <label>
+          평가 배치
+          <select id="run-filter"></select>
+        </label>
+        <label>
+          Rule
+          <select id="predicted-filter"></select>
+        </label>
+        <label>
+          Classifier
+          <select id="classifier-filter"></select>
+        </label>
+        <label>
+          검토 라벨
+          <select id="review-label-filter"></select>
+        </label>
+        <label>
+          검토 상태
+          <select id="review-status-filter"></select>
+        </label>
+        <label class="search-box">
+          검색
+          <input id="q-filter" type="search" placeholder="event_id, review_label, classifier" />
+        </label>
+      </section>
+
+      <section class="summary">
+        <span id="summary-text"></span>
+      </section>
+
+      <section class="pager">
+        <button id="first-page-btn" type="button">처음</button>
+        <button id="prev-page-btn" type="button">이전</button>
+        <span id="page-text"></span>
+        <button id="next-page-btn" type="button">다음</button>
+        <button id="last-page-btn" type="button">마지막</button>
+        <label>
+          페이지 크기
+          <select id="limit-select">
+            <option value="50">50</option>
+            <option value="100" selected>100</option>
+            <option value="200">200</option>
+            <option value="500">500</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="grid-wrap">
+        <table id="evaluation-table">
+          <thead>
+            <tr>
+              <th>No.</th>
+              <th>이벤트 ID</th>
+              <th>원본 Epoch</th>
+              <th>카메라</th>
+              <th>스냅샷</th>
+              <th>클립</th>
+              <th>Rule</th>
+              <th>Classifier</th>
+              <th>검토 라벨</th>
+              <th>검토 상태</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+    </main>
+    <script src="/static/evaluations.js?v=20260325d"></script>
+  </body>
+  </html>

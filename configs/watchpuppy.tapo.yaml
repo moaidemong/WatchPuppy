@@ -1,0 +1,19 @@
+app_name: watchpuppy
+watchdog_root: /home/moai/Workspace/Codex/WatchDog
+watchdog_config: /home/moai/Workspace/Codex/WatchDog/configs/app.tapo.multi.example.yaml
+storage:
+  artifacts_dir: /home/moai/Workspace/Codex/WatchPuppy/artifacts
+  review_queue_dir: /home/moai/Workspace/Codex/WatchPuppy/review_queue
+  exports_dir: /home/moai/Workspace/Codex/WatchPuppy/exports
+  shrink_dir: /home/moai/Workspace/Codex/WatchPuppy/artifacts
+review_web:
+  db_path: /home/moai/Workspace/Codex/WatchPuppy/review_web/data/review_web.sqlite3
+runtime:
+  model_name: mobilenet_v3_small
+  model_path: /home/moai/Workspace/Codex/WatchPuppy/data/interim/models/final_shrink_mobilenet5/failed_get_up_mobilenet_v3_small.pt
+  image_size: 96
+  threshold: 0.8
+  margin_ratio: 0.2
+  block_on_context_labels:
+    - person
+    - cat

@@ -21,6 +21,7 @@ class ImportConfig:
     epochs: tuple[str, ...]
     review_status: str = "approved"
     link_mode: str = "hardlink"
+    excluded_event_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -45,6 +46,7 @@ def fetch_review_rows(config: ImportConfig) -> list[ReviewRow]:
         """
         params: list[str] = [config.review_status, *config.epochs]
         rows = conn.execute(query, params).fetchall()
+        excluded = set(config.excluded_event_ids)
         return [
             ReviewRow(
                 event_id=row["event_id"],
@@ -53,6 +55,7 @@ def fetch_review_rows(config: ImportConfig) -> list[ReviewRow]:
                 snapshot_path=row["snapshot_path"],
             )
             for row in rows
+            if row["event_id"] not in excluded
         ]
     finally:
         conn.close()

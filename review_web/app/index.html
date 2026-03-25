@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WatchPuppy Review Web</title>
+    <link rel="stylesheet" href="/static/app.css?v=20260325c" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="toolbar">
+        <div>
+          <h1>WatchPuppy Review Web</h1>
+          <p>메니페스트 조회/수정 도구</p>
+        </div>
+        <div class="toolbar-actions">
+          <button id="sync-btn" type="button">동기화</button>
+          <button id="reload-btn" type="button">새로고침</button>
+        </div>
+      </header>
+
+      <section class="filters">
+        <label>
+          카메라
+          <select id="camera-filter">
+            <option value="">전체</option>
+            <option value="a">A</option>
+            <option value="b">B</option>
+            <option value="c">C</option>
+          </select>
+        </label>
+        <label>
+          Epoch
+          <select id="epoch-filter"></select>
+        </label>
+        <label>
+          검토 상태
+          <select id="status-filter"></select>
+        </label>
+        <label>
+          신규
+          <select id="new-filter">
+            <option value="">전체</option>
+            <option value="1">신규만</option>
+          </select>
+        </label>
+        <label>
+          검토 라벨
+          <select id="label-filter"></select>
+        </label>
+        <label class="search-box">
+          검색
+          <input id="q-filter" type="search" placeholder="event_id, notes, reasons" />
+        </label>
+      </section>
+
+      <section class="summary">
+        <span id="summary-text"></span>
+      </section>
+
+      <section class="pager">
+        <button id="first-page-btn" type="button">처음</button>
+        <button id="prev-page-btn" type="button">이전</button>
+        <span id="page-text"></span>
+        <button id="next-page-btn" type="button">다음</button>
+        <button id="last-page-btn" type="button">마지막</button>
+        <label>
+          페이지 크기
+          <select id="limit-select">
+            <option value="50">50</option>
+            <option value="100" selected>100</option>
+            <option value="200">200</option>
+            <option value="500">500</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="grid-wrap">
+        <table id="review-table">
+          <thead>
+            <tr>
+              <th>No.</th>
+              <th>이벤트 ID</th>
+              <th>카메라</th>
+              <th>스냅샷</th>
+              <th>클립</th>
+              <th>분류기</th>
+              <th>검토 라벨</th>
+              <th>검토 상태</th>
+              <th>메모</th>
+              <th>저장</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+    </main>
+    <script src="/static/app.js?v=20260325c"></script>
+  </body>
+  </html>

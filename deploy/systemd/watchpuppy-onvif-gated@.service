@@ -1,0 +1,21 @@
+[Unit]
+Description=WatchPuppy ONVIF gated collector for camera %i
+Wants=network-online.target
+After=network-online.target hailort.service
+PartOf=watchpuppy-onvif-gated.target
+
+[Service]
+Type=simple
+User=moai
+WorkingDirectory=/home/moai/Workspace/Codex/WatchPuppy
+EnvironmentFile=/home/moai/Workspace/Codex/WatchDog/configs/watchdog-tapo.env
+EnvironmentFile=/home/moai/Workspace/Codex/WatchPuppy/configs/watchpuppy.env
+ExecStart=/usr/bin/env bash /home/moai/Workspace/Codex/WatchPuppy/scripts/run_onvif_watchpuppy_service.sh %i
+StandardOutput=journal
+StandardError=append:/home/moai/Workspace/Codex/WatchPuppy/watchpuppy-onvif-%i.stderr.log
+Restart=always
+RestartSec=10
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

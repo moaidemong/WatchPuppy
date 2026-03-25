@@ -1,0 +1,19 @@
+[Unit]
+Description=WatchPuppy Review Web
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=moai
+WorkingDirectory=/home/moai/Workspace/Codex/WatchPuppy
+Environment=WATCHPUPPY_ROOT=/home/moai/Workspace/Codex/WatchPuppy
+Environment=REVIEW_WEB_DB_PATH=/home/moai/Workspace/Codex/WatchPuppy/review_web/data/review_web.sqlite3
+Environment=WATCHPUPPY_EPOCH=RUN1
+ExecStart=/home/moai/Workspace/Codex/WatchDog/.venv/bin/uvicorn review_web.app.main:app --host 127.0.0.1 --port 18011
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

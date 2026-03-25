@@ -4,9 +4,12 @@ version = "0.1.0"
 description = "Snapshot-based CNN classifier for elderly dog failed get-up attempts"
 requires-python = ">=3.12"
 dependencies = [
+    "fastapi>=0.116.0",
     "pillow>=11.0.0",
     "torch>=2.6.0",
     "torchvision>=0.21.0",
+    "uvicorn>=0.35.0",
+    "pyyaml>=6.0.2",
 ]
 
 [build-system]

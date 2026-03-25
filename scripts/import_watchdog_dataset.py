@@ -54,11 +54,27 @@ def build_parser() -> argparse.ArgumentParser:
         default="hardlink",
         help="How to materialize snapshots inside WatchPuppy data/raw.",
     )
+    parser.add_argument(
+        "--excluded-event-ids-file",
+        default="/home/moai/Workspace/Codex/WatchPuppy/data/processed/excluded_event_ids.txt",
+        help="Optional newline-delimited event_id exclusion list.",
+    )
     return parser
+
+
+def load_excluded_event_ids(path: Path) -> tuple[str, ...]:
+    if not path.exists():
+        return ()
+    return tuple(
+        line.strip()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    )
 
 
 def main() -> None:
     args = build_parser().parse_args()
+    excluded_event_ids = load_excluded_event_ids(Path(args.excluded_event_ids_file))
     config = ImportConfig(
         review_db=Path(args.review_db),
         watchdog_root=Path(args.watchdog_root),
@@ -67,8 +83,10 @@ def main() -> None:
         epochs=tuple(args.epochs),
         review_status=args.review_status,
         link_mode=args.link_mode,
+        excluded_event_ids=excluded_event_ids,
     )
     stats = import_watchdog_dataset(config)
+    stats["excluded_event_ids"] = len(excluded_event_ids)
     print(json.dumps(stats, indent=2, sort_keys=True))
 
 
