@@ -31,6 +31,9 @@ WatchPuppy/
   scripts/
   watchpuppy/
     data/
+    datasets/
+    runtime/
+    upstream/
     models/
     training/
     inference/
@@ -74,3 +77,27 @@ By default this will:
 - create hard links when possible
 - write a binary manifest to:
   - `data/processed/gen1_gen5_failed_get_up_binary.csv`
+
+## Architecture Direction
+
+The codebase is split so that input connectors can change later without
+changing the CNN training or inference core.
+
+- `watchpuppy.upstream`
+  - adapters/connectors that yield input records
+  - current implementation: WatchDog reviewed snapshot import
+  - future implementation: TAPO pull based runtime connector
+- `watchpuppy.datasets`
+  - manifest parsing and binary dataset views
+- `watchpuppy.models`
+  - CNN definitions and model loading
+- `watchpuppy.training`
+  - training loops and evaluation helpers
+- `watchpuppy.runtime`
+  - runtime orchestration around upstream input and model inference
+
+The intended long-term flow is:
+
+1. upstream connector yields a dog-only snapshot candidate
+2. runtime applies ignore rules for non-dog context when needed
+3. CNN predicts `failed_get_up_attempt` vs `non_target`
