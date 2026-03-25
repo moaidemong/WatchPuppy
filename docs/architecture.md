@@ -40,6 +40,13 @@ Current:
 
 CNN image classifier on dog snapshots.
 
+Current baseline:
+
+- `simple_cnn`
+- binary output:
+  - `failed_get_up_attempt`
+  - `non_target`
+
 ### 4. Runtime
 
 Later runtime integration should depend on the same `SnapshotRecord`

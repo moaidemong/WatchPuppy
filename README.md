@@ -92,6 +92,24 @@ Default split ratios:
 - val: `0.15`
 - test: `0.15`
 
+## CNN Training
+
+Train the first binary CNN baseline with:
+
+```bash
+python scripts/train_cnn.py
+```
+
+Outputs:
+
+- model weights under `data/interim/models/`
+- train/val history and test metrics as JSON
+
+Note:
+
+- this step requires `torch` and `torchvision`
+- the current baseline model is intentionally small: `simple_cnn`
+
 ## Architecture Direction
 
 The codebase is split so that input connectors can change later without
