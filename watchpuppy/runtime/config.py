@@ -26,7 +26,10 @@ class ModelRuntimeSettings:
     model_path: Path
     image_size: int
     threshold: float
+    server_url: str
     margin_ratio: float
+    allowed_trigger_keys: list[str]
+    allowed_detection_labels: list[str]
     block_on_context_labels: list[str]
 
 
@@ -63,7 +66,10 @@ def load_settings(path: str | Path) -> WatchPuppySettings:
             model_path=Path(runtime["model_path"]).resolve(),
             image_size=int(runtime["image_size"]),
             threshold=float(runtime["threshold"]),
+            server_url=str(runtime.get("server_url", "http://127.0.0.1:18021")).rstrip("/"),
             margin_ratio=float(runtime.get("margin_ratio", 0.2)),
+            allowed_trigger_keys=[str(item) for item in runtime.get("allowed_trigger_keys", ["pet"])],
+            allowed_detection_labels=[str(item) for item in runtime.get("allowed_detection_labels", ["dog"])],
             block_on_context_labels=[str(item) for item in runtime.get("block_on_context_labels", [])],
         ),
     )

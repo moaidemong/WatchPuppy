@@ -17,12 +17,16 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from watchpuppy.runtime.config import load_settings
+from watchpuppy.runtime.logging_runtime import configure_watchpuppy_logging, new_transaction_id, transaction_logging
 from watchpuppy.runtime.pipeline import WatchPuppyRuntime
 
-logger = logging.getLogger(__name__)
+
+logger = logging.getLogger("watchpuppy.backbone")
 
 
 def main() -> None:
+    configure_watchpuppy_logging()
+
     parser = argparse.ArgumentParser(description="Run WatchPuppy pipeline only when ONVIF events trigger.")
     parser.add_argument("--config", required=True)
     parser.add_argument("--camera-id", required=True)
@@ -39,14 +43,11 @@ def main() -> None:
 
     settings = load_settings(args.config)
     epoch = os.getenv("WATCHPUPPY_EPOCH", "RUN1").strip() or "RUN1"
+    allowed_trigger_keys = set(settings.runtime.allowed_trigger_keys)
 
-    watchdog_root = settings.watchdog_root
-    if str(watchdog_root) not in sys.path:
-        sys.path.insert(0, str(watchdog_root))
-
-    from app.core.config import load_settings as load_watchdog_settings  # type: ignore
-    from app.onvif.events import decide_trigger, parse_notification_message, summarize_event  # type: ignore
-    from app.onvif.probe import discover_wsdl_dir, resolve_probe_target  # type: ignore
+    from app.core.config import load_settings as load_watchdog_settings
+    from app.onvif.events import decide_trigger, parse_notification_message, summarize_event
+    from app.onvif.probe import discover_wsdl_dir, resolve_probe_target
 
     try:
         from onvif import ONVIFCamera
@@ -66,20 +67,23 @@ def main() -> None:
         str(wsdl_dir),
     )
     events_service = camera.create_events_service()
-    pullpoint_service = _create_pullpoint_service(
+    runtime = WatchPuppyRuntime(settings=settings, epoch=epoch)
+    pullpoint_service = _create_pullpoint_service_with_retry(
         camera,
         events_service,
         serialize_object,
         max(1, args.duration_seconds),
+        reconnect_delay_seconds=max(0.0, args.reconnect_delay_seconds),
+        camera_id=args.camera_id,
         quiet=args.quiet,
     )
-    runtime = WatchPuppyRuntime(settings=settings, epoch=epoch)
 
     last_trigger_at: dict[str, float] = {}
     total_messages = 0
     topic_counts: Counter[str] = Counter()
     trigger_counts: Counter[str] = Counter()
     deadline = None if args.duration_seconds <= 0 else time.monotonic() + args.duration_seconds
+
     try:
         while deadline is None or time.monotonic() < deadline:
             remaining_budget = args.pull_timeout_seconds
@@ -93,7 +97,7 @@ def main() -> None:
                 raise
             except Exception as exc:
                 if not args.quiet:
-                    print(
+                    logger.warning(
                         json.dumps(
                             {
                                 "camera_id": args.camera_id,
@@ -101,16 +105,17 @@ def main() -> None:
                                 "error": str(exc),
                                 "action": "resubscribe",
                             },
-                            indent=2,
-                        ),
-                        flush=True,
+                            ensure_ascii=False,
+                        )
                     )
                 time.sleep(max(0.0, args.reconnect_delay_seconds))
-                pullpoint_service = _create_pullpoint_service(
+                pullpoint_service = _create_pullpoint_service_with_retry(
                     camera,
                     events_service,
                     serialize_object,
                     max(1, args.duration_seconds),
+                    reconnect_delay_seconds=max(0.0, args.reconnect_delay_seconds),
+                    camera_id=args.camera_id,
                     quiet=args.quiet,
                 )
                 continue
@@ -124,30 +129,36 @@ def main() -> None:
                 decision = decide_trigger(event)
                 if not decision.should_trigger or not decision.trigger_key:
                     continue
+                if decision.trigger_key not in allowed_trigger_keys:
+                    continue
                 now = time.monotonic()
                 last_seen = last_trigger_at.get(decision.trigger_key)
                 if last_seen is not None and now - last_seen < args.cooldown_seconds:
                     continue
+
                 last_trigger_at[decision.trigger_key] = now
                 trigger_counts[decision.trigger_key] += 1
-                if not args.quiet:
-                    print(
-                        json.dumps(
-                            {
-                                "camera_id": args.camera_id,
-                                "trigger_key": decision.trigger_key,
-                                "reason": decision.reason,
-                                "event": summarize_event(event),
-                                "epoch": epoch,
-                            },
-                            indent=2,
-                        ),
-                        flush=True,
-                    )
-                with _pipeline_lock(args.pipeline_lock_file):
-                    runtime.run_capture_and_infer(args.camera_id)
+                transaction_id = new_transaction_id(args.camera_id)
+                with transaction_logging(transaction_id):
+                    if not args.quiet:
+                        logger.info(
+                            json.dumps(
+                                {
+                                    "camera_id": args.camera_id,
+                                    "transaction_id": transaction_id,
+                                    "trigger_key": decision.trigger_key,
+                                    "reason": decision.reason,
+                                    "event": summarize_event(event),
+                                    "epoch": epoch,
+                                },
+                                ensure_ascii=False,
+                            )
+                        )
+                    with _pipeline_lock(args.pipeline_lock_file):
+                        runtime.run_capture_and_infer(args.camera_id, transaction_id=transaction_id)
+
         if not args.quiet:
-            print(
+            logger.info(
                 json.dumps(
                     {
                         "camera_id": args.camera_id,
@@ -158,9 +169,8 @@ def main() -> None:
                             "trigger_counts": dict(trigger_counts),
                         },
                     },
-                    indent=2,
-                ),
-                flush=True,
+                    ensure_ascii=False,
+                )
             )
     finally:
         runtime.close()
@@ -189,9 +199,46 @@ def _create_pullpoint_service(camera, events_service, serialize_object, duration
     subscription_data = serialize_object(subscription)
     subscription_xaddr = _extract_subscription_xaddr(subscription_data)
     if not quiet:
-        print(json.dumps({"subscription_xaddr": subscription_xaddr}, indent=2), flush=True)
+        logger.info(json.dumps({"subscription_xaddr": subscription_xaddr}, ensure_ascii=False))
     camera.xaddrs["http://www.onvif.org/ver10/events/wsdl/PullPointSubscription"] = subscription_xaddr
     return camera.create_pullpoint_service()
+
+
+def _create_pullpoint_service_with_retry(
+    camera,
+    events_service,
+    serialize_object,
+    duration_seconds: int,
+    *,
+    reconnect_delay_seconds: float,
+    camera_id: str,
+    quiet: bool,
+):
+    while True:
+        try:
+            return _create_pullpoint_service(
+                camera,
+                events_service,
+                serialize_object,
+                duration_seconds,
+                quiet=quiet,
+            )
+        except KeyboardInterrupt:
+            raise
+        except Exception as exc:
+            if not quiet:
+                logger.warning(
+                    json.dumps(
+                        {
+                            "camera_id": camera_id,
+                            "warning": "create_pullpoint_subscription_failed",
+                            "error": str(exc),
+                            "action": "retry",
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+            time.sleep(reconnect_delay_seconds)
 
 
 @contextmanager

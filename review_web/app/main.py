@@ -19,6 +19,7 @@ from review_web.app.services import (
     update_review,
 )
 from review_web.app.translations import REVIEW_LABEL_OPTIONS, REVIEW_STATUS_OPTIONS, TEXT_TRANSLATIONS
+from watchpuppy.runtime.logging_runtime import configure_watchpuppy_logging
 
 
 WATCHPUPPY_ROOT = Path(os.getenv("WATCHPUPPY_ROOT", "/home/moai/Workspace/Codex/WatchPuppy")).resolve()
@@ -27,6 +28,7 @@ DB_PATH = Path(
 ).resolve()
 CURRENT_EPOCH = os.getenv("WATCHPUPPY_EPOCH", "RUN1").strip() or "RUN1"
 
+configure_watchpuppy_logging()
 initialize_database(DB_PATH)
 with connect(DB_PATH) as conn:
     bootstrap_or_sync_from_watchpuppy(conn, watchpuppy_root=WATCHPUPPY_ROOT, current_epoch=CURRENT_EPOCH)
@@ -45,15 +47,16 @@ def index() -> str:
     return (WATCHPUPPY_ROOT / "review_web" / "app" / "index.html").read_text(encoding="utf-8")
 
 
-@app.get("/view/clip/{event_id}", response_class=HTMLResponse)
-def clip_view(event_id: str, request: Request) -> str:
+@app.get("/view/clip/{review_key}", response_class=HTMLResponse)
+def clip_view(review_key: str, request: Request) -> str:
     return_url = request.query_params.get("return") or "/"
+    display_id = request.query_params.get("event_id") or review_key
     return f"""<!doctype html>
 <html lang="ko">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Clip {event_id}</title>
+    <title>Clip {display_id}</title>
     <style>
       body {{ margin: 0; font-family: "Noto Sans KR", sans-serif; background: #111827; color: #f8fafc; }}
       main {{ padding: 20px; }}
@@ -64,9 +67,9 @@ def clip_view(event_id: str, request: Request) -> str:
   <body>
     <main>
       <p><a href="{return_url}">리뷰 목록으로 돌아가기</a></p>
-      <h1>{event_id}</h1>
+      <h1>{display_id}</h1>
       <video controls autoplay preload="metadata">
-        <source src="/media/clip/{event_id}" type="video/mp4" />
+        <source src="/media/clip/{review_key}" type="video/mp4" />
       </video>
     </main>
   </body>
@@ -122,8 +125,8 @@ def list_reviews(
     return {"total": total, "items": rows}
 
 
-@app.patch("/api/reviews/{event_id}")
-def patch_review(event_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+@app.patch("/api/reviews/{review_key}")
+def patch_review(review_key: str, payload: dict[str, Any]) -> dict[str, Any]:
     version = int(payload.get("version", 0))
     review_status = str(payload.get("review_status", "pending"))
     review_label = str(payload.get("review_label", ""))
@@ -131,7 +134,7 @@ def patch_review(event_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     with connect(DB_PATH) as conn:
         row = update_review(
             conn,
-            event_id=event_id,
+            review_key=review_key,
             version=version,
             review_status=review_status,
             review_label=review_label,
@@ -143,10 +146,10 @@ def patch_review(event_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     return {"item": row}
 
 
-@app.get("/media/{kind}/{event_id}")
-def media(kind: str, event_id: str):
+@app.get("/media/{kind}/{review_key}")
+def media(kind: str, review_key: str):
     with connect(DB_PATH) as conn:
-        path = media_path_for_event(conn, event_id=event_id, kind=kind, watchpuppy_root=WATCHPUPPY_ROOT)
+        path = media_path_for_event(conn, review_key=review_key, kind=kind, watchpuppy_root=WATCHPUPPY_ROOT)
     if path is None:
         raise HTTPException(status_code=404, detail="media not found")
     media_type = "image/jpeg" if kind == "snapshot" else "video/mp4"

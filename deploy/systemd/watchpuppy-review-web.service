@@ -7,10 +7,11 @@ After=network-online.target
 Type=simple
 User=moai
 WorkingDirectory=/home/moai/Workspace/Codex/WatchPuppy
+EnvironmentFile=/home/moai/Workspace/Codex/WatchPuppy/configs/watchpuppy.env
 Environment=WATCHPUPPY_ROOT=/home/moai/Workspace/Codex/WatchPuppy
 Environment=REVIEW_WEB_DB_PATH=/home/moai/Workspace/Codex/WatchPuppy/review_web/data/review_web.sqlite3
 Environment=WATCHPUPPY_EPOCH=RUN1
-ExecStart=/home/moai/Workspace/Codex/WatchDog/.venv/bin/uvicorn review_web.app.main:app --host 127.0.0.1 --port 18011
+ExecStart=/home/moai/Workspace/Codex/Runtime/Web/.venv/bin/uvicorn review_web.app.main:app --host 127.0.0.1 --port 18011
 Restart=always
 RestartSec=5
 TimeoutStopSec=30

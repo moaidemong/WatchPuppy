@@ -10,6 +10,7 @@ data/interim/
 data/processed/
 artifacts/
 exports/
+review_queue/
 review_web/data/
 *.log
 watchpuppy-onvif-*.stderr.log

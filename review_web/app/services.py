@@ -9,6 +9,7 @@ from typing import Any
 from review_web.app.translations import REVIEW_LABEL_OPTIONS, REVIEW_STATUS_OPTIONS
 
 REVIEW_EXPORT_COLUMNS = [
+    "review_key",
     "event_id",
     "epoch",
     "captured_at",
@@ -36,10 +37,12 @@ def sync_rows_into_db(conn, rows: list[dict[str, Any]], *, current_epoch: str) -
         event_id = str(row.get("event_id", "")).strip()
         if not event_id:
             continue
+        row_epoch = str(row.get("epoch") or current_epoch)
+        review_key = f"{row_epoch}::{event_id}"
         camera_id = str(row.get("camera_id", event_id.split("-", 1)[0])).strip()
         existing = conn.execute(
-            "SELECT review_status, review_label, review_notes, epoch FROM reviews WHERE event_id = ?",
-            (event_id,),
+            "SELECT review_status, review_label, review_notes, epoch FROM reviews WHERE review_key = ?",
+            (review_key,),
         ).fetchone()
         review_status = str(row.get("review_status", "pending") or "pending")
         review_label = str(row.get("review_label", "") or "")
@@ -52,14 +55,15 @@ def sync_rows_into_db(conn, rows: list[dict[str, Any]], *, current_epoch: str) -
             conn.execute(
                 """
                 UPDATE reviews
-                SET camera_id = ?, epoch = ?, captured_at = ?, predicted_label = ?, classifier_label = ?, classifier_score = ?,
+                SET event_id = ?, camera_id = ?, epoch = ?, captured_at = ?, predicted_label = ?, classifier_label = ?, classifier_score = ?,
                     clip_path = ?, snapshot_path = ?, metadata_path = ?,
                     review_status = ?, review_label = ?, review_notes = ?, updated_at = ?
-                WHERE event_id = ?
+                WHERE review_key = ?
                 """,
                 (
+                    event_id,
                     camera_id,
-                    str(existing["epoch"] or row.get("epoch") or current_epoch),
+                    str(existing["epoch"] or row_epoch),
                     str(row.get("captured_at", "")),
                     str(row.get("predicted_label", "")),
                     str(row.get("classifier_label", "")),
@@ -71,23 +75,24 @@ def sync_rows_into_db(conn, rows: list[dict[str, Any]], *, current_epoch: str) -
                     review_label,
                     review_notes,
                     now,
-                    event_id,
+                    review_key,
                 ),
             )
             continue
         conn.execute(
             """
             INSERT INTO reviews (
-                event_id, camera_id, epoch, captured_at,
+                review_key, event_id, camera_id, epoch, captured_at,
                 predicted_label, classifier_label, classifier_score,
                 clip_path, snapshot_path, metadata_path, is_new,
                 review_status, review_label, review_notes, created_at, updated_at, version
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
             """,
             (
+                review_key,
                 event_id,
                 camera_id,
-                str(row.get("epoch") or current_epoch),
+                row_epoch,
                 str(row.get("captured_at", "")),
                 str(row.get("predicted_label", "")),
                 str(row.get("classifier_label", "")),
@@ -112,7 +117,7 @@ def export_db_to_manifest(conn, manifest_path: Path) -> None:
     rows = conn.execute(
         """
         SELECT event_id, epoch, captured_at, predicted_label, classifier_label, classifier_score,
-               clip_path, snapshot_path, metadata_path, review_status, review_label, review_notes
+               review_key, clip_path, snapshot_path, metadata_path, review_status, review_label, review_notes
         FROM reviews
         ORDER BY captured_at DESC, event_id DESC
         """
@@ -156,10 +161,10 @@ def query_reviews(
         clauses.append("is_new = 1")
     if q:
         clauses.append(
-            "(event_id LIKE ? OR review_notes LIKE ? OR predicted_label LIKE ? OR classifier_label LIKE ?)"
+            "(event_id LIKE ? OR review_key LIKE ? OR review_notes LIKE ? OR predicted_label LIKE ? OR classifier_label LIKE ?)"
         )
         pattern = f"%{q}%"
-        params.extend([pattern, pattern, pattern, pattern])
+        params.extend([pattern, pattern, pattern, pattern, pattern])
     where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     total = conn.execute(f"SELECT COUNT(*) FROM reviews {where_sql}", params).fetchone()[0]
     rows = conn.execute(
@@ -190,7 +195,7 @@ def list_epochs(conn) -> list[str]:
 def update_review(
     conn,
     *,
-    event_id: str,
+    review_key: str,
     version: int,
     review_status: str,
     review_label: str,
@@ -206,21 +211,21 @@ def update_review(
         """
         UPDATE reviews
         SET review_status = ?, review_label = ?, review_notes = ?, is_new = 0, updated_at = ?, version = version + 1
-        WHERE event_id = ? AND version = ?
+        WHERE review_key = ? AND version = ?
         """,
-        (review_status, review_label, review_notes, now, event_id, version),
+        (review_status, review_label, review_notes, now, review_key, version),
     )
     if cursor.rowcount == 0:
         return None
-    row = conn.execute("SELECT * FROM reviews WHERE event_id = ?", (event_id,)).fetchone()
+    row = conn.execute("SELECT * FROM reviews WHERE review_key = ?", (review_key,)).fetchone()
     return dict(row) if row is not None else None
 
 
-def media_path_for_event(conn, *, event_id: str, kind: str, watchpuppy_root: Path) -> Path | None:
+def media_path_for_event(conn, *, review_key: str, kind: str, watchpuppy_root: Path) -> Path | None:
     if kind not in {"clip", "snapshot"}:
         return None
     column = "clip_path" if kind == "clip" else "snapshot_path"
-    row = conn.execute(f"SELECT {column} FROM reviews WHERE event_id = ?", (event_id,)).fetchone()
+    row = conn.execute(f"SELECT {column} FROM reviews WHERE review_key = ?", (review_key,)).fetchone()
     if row is None or not row[column]:
         return None
     path = (watchpuppy_root / row[column]).resolve()

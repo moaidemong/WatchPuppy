@@ -122,6 +122,7 @@ async function loadRows() {
   const returnQuery = encodeURIComponent(`/evaluations?${query.toString()}`);
 
   payload.items.forEach((item, index) => {
+    const reviewKey = encodeURIComponent(item.review_key || `${item.source_epoch || ""}::${item.event_id}`);
     const tr = document.createElement("tr");
     const classifierLabel = item.classifier_label || "-";
     const classifierScore =
@@ -133,8 +134,8 @@ async function loadRows() {
       <td>${item.event_id}</td>
       <td>${item.source_epoch || "-"}</td>
       <td>${(item.camera_id || "").toUpperCase()}</td>
-      <td><a href="/media/snapshot/${item.event_id}" target="_blank">열기</a></td>
-      <td><a href="/view/clip/${item.event_id}?return=${returnQuery}" target="_blank">열기</a></td>
+      <td><a href="/media/snapshot/${reviewKey}" target="_blank">열기</a></td>
+      <td><a href="/view/clip/${reviewKey}?return=${returnQuery}&event_id=${encodeURIComponent(item.event_id)}" target="_blank">열기</a></td>
       <td>${t(item.predicted_label || "-")}</td>
       <td>${t(classifierLabel)}${classifierScore}</td>
       <td>${t(item.review_label || "-")}</td>

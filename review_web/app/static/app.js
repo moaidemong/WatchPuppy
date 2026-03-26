@@ -108,13 +108,15 @@ async function loadRows() {
   tbody.innerHTML = "";
   const returnQuery = encodeURIComponent(`/?${query.toString()}`);
   payload.items.forEach((item, index) => {
+    const reviewKey = encodeURIComponent(item.review_key);
+    const displayEventId = item.event_id;
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${state.offset + index + 1}</td>
-      <td>${item.event_id}</td>
+      <td>${displayEventId}</td>
       <td>${item.camera_id.toUpperCase()}</td>
-      <td><a href="/media/snapshot/${item.event_id}" target="_blank">열기</a></td>
-      <td><a href="/view/clip/${item.event_id}?return=${returnQuery}" target="_blank">열기</a></td>
+      <td><a href="/media/snapshot/${reviewKey}" target="_blank">열기</a></td>
+      <td><a href="/view/clip/${reviewKey}?return=${returnQuery}&event_id=${encodeURIComponent(displayEventId)}" target="_blank">열기</a></td>
       <td></td>
       <td></td>
       <td></td>
@@ -159,7 +161,7 @@ async function loadRows() {
     saveBtn.addEventListener("click", async () => {
       saveBtn.classList.remove("saved", "conflict");
       try {
-        const result = await fetchJson(`/api/reviews/${item.event_id}`, {
+        const result = await fetchJson(`/api/reviews/${reviewKey}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

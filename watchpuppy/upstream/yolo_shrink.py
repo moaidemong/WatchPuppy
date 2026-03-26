@@ -1,16 +1,21 @@
 from __future__ import annotations
 
 import csv
+import json
+import logging
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 
-WATCHDOG_ROOT = Path("/home/moai/Workspace/Codex/WatchDog")
-if str(WATCHDOG_ROOT) not in sys.path:
-    sys.path.insert(0, str(WATCHDOG_ROOT))
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.detection.hailo_hef_detector import HailoHefDogDetector, HailoHefDogDetectorConfig  # type: ignore  # noqa: E402
+from app.detection.hailo_hef_detector import HailoHefDogDetector, HailoHefDogDetectorConfig  # noqa: E402
+
+
+logger = logging.getLogger("watchpuppy.front_yolo_process")
 
 
 @dataclass(frozen=True)
@@ -19,7 +24,7 @@ class YoloShrinkConfig:
     output_root: Path
     report_path: Path
     model_path: Path = Path("/usr/share/hailo-models/yolov8s_h8.hef")
-    labels_path: Path = WATCHDOG_ROOT / "configs" / "dog_labels.coco.txt"
+    labels_path: Path = PROJECT_ROOT / "configs" / "dog_labels.coco.txt"
     confidence_threshold: float = 0.20
     margin_ratio: float = 0.20
     dog_class_names: tuple[str, ...] = ("dog", "horse")
@@ -121,6 +126,16 @@ def shrink_single_snapshot(
         raise ValueError(f"failed to read image: {input_path}")
     height, width = image.shape[:2]
     detections = detector.detect_image(image)
+    logger.debug(
+        json.dumps(
+            {
+                "phase": "detect",
+                "input_path": str(input_path),
+                "detection_count": len(detections),
+            },
+            ensure_ascii=False,
+        )
+    )
     context_labels = tuple(
         sorted(
             {
@@ -133,6 +148,18 @@ def shrink_single_snapshot(
     best = _pick_best_dog_detection(detections, set(dog_class_names))
     if best is None:
         cv2.imwrite(str(output_path), image)
+        logger.info(
+            json.dumps(
+                {
+                    "phase": "fallback",
+                    "input_path": str(input_path),
+                    "output_path": str(output_path),
+                    "status": "fallback_original",
+                    "context_labels": context_labels,
+                },
+                ensure_ascii=False,
+            )
+        )
         return SingleShrinkResult(
             input_path=str(input_path),
             output_path=str(output_path),
@@ -150,6 +177,18 @@ def shrink_single_snapshot(
     cropped = image[y1:y2, x1:x2]
     if cropped.size == 0:
         cv2.imwrite(str(output_path), image)
+        logger.info(
+            json.dumps(
+                {
+                    "phase": "fallback",
+                    "input_path": str(input_path),
+                    "output_path": str(output_path),
+                    "status": "fallback_empty_crop",
+                    "context_labels": context_labels,
+                },
+                ensure_ascii=False,
+            )
+        )
         return SingleShrinkResult(
             input_path=str(input_path),
             output_path=str(output_path),
@@ -164,6 +203,20 @@ def shrink_single_snapshot(
         )
 
     cv2.imwrite(str(output_path), cropped)
+    logger.info(
+        json.dumps(
+            {
+                "phase": "cropped",
+                "input_path": str(input_path),
+                "output_path": str(output_path),
+                "label": str(getattr(best, "label", "")),
+                "confidence": float(getattr(best, "confidence", 0.0)),
+                "context_labels": context_labels,
+                "bbox": {"x1": x1, "y1": y1, "x2": x2, "y2": y2},
+            },
+            ensure_ascii=False,
+        )
+    )
     return SingleShrinkResult(
         input_path=str(input_path),
         output_path=str(output_path),

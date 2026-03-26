@@ -1,0 +1,17 @@
+[Unit]
+Description=WatchPuppy CNN Inference Server
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=moai
+WorkingDirectory=/home/moai/Workspace/Codex/WatchPuppy
+EnvironmentFile=/home/moai/Workspace/Codex/WatchPuppy/configs/watchpuppy.env
+ExecStart=/home/moai/Workspace/Codex/Runtime/PyTorch/.venv/bin/python /home/moai/Workspace/Codex/WatchPuppy/scripts/run_cnn_inference_server.py --host 127.0.0.1 --port 18021 --model-name mobilenet_v3_small --model-path /home/moai/Workspace/Codex/WatchPuppy/data/interim/models/final_shrink_mobilenet5/failed_get_up_mobilenet_v3_small.pt --image-size 96 --device cpu
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
