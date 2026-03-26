@@ -13,11 +13,15 @@ from uuid import uuid4
 
 
 _transaction_id_var: ContextVar[str] = ContextVar("watchpuppy_transaction_id", default="-")
+_TRANSACTION_ID_WIDTH = 12
 
 
 class TransactionContextFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
-        record.transaction_id = _transaction_id_var.get("-")
+        transaction_id = _transaction_id_var.get("-")
+        if transaction_id == "-":
+            transaction_id = "-" * _TRANSACTION_ID_WIDTH
+        record.transaction_id = transaction_id
         return True
 
 

@@ -7,6 +7,15 @@ from typing import Any
 import requests
 
 
+def _telegram_chat_ids() -> list[str]:
+    raw_chat_ids = os.getenv("WATCHPUPPY_TELEGRAM_CHAT_IDS", "").strip()
+    if raw_chat_ids:
+        return [item.strip() for item in raw_chat_ids.split(",") if item.strip()]
+
+    legacy_chat_id = os.getenv("WATCHPUPPY_TELEGRAM_CHAT_ID", "").strip()
+    return [legacy_chat_id] if legacy_chat_id else []
+
+
 def send_failed_get_up_alert(
     *,
     event_id: str,
@@ -21,8 +30,8 @@ def send_failed_get_up_alert(
         return {"channel": "telegram", "status": "disabled"}
 
     token = os.getenv("WATCHPUPPY_TELEGRAM_BOT_TOKEN", "").strip()
-    chat_id = os.getenv("WATCHPUPPY_TELEGRAM_CHAT_ID", "").strip()
-    if not token or not chat_id:
+    chat_ids = _telegram_chat_ids()
+    if not token or not chat_ids:
         return {"channel": "telegram", "status": "missing_credentials"}
 
     base_url = f"https://api.telegram.org/bot{token}"
@@ -36,28 +45,37 @@ def send_failed_get_up_alert(
         f"threshold={threshold:.3f}"
     )
 
+    results: list[dict[str, Any]] = []
     try:
-        if snapshot_path.exists():
-            with snapshot_path.open("rb") as fp:
+        for chat_id in chat_ids:
+            if snapshot_path.exists():
+                with snapshot_path.open("rb") as fp:
+                    response = requests.post(
+                        f"{base_url}/sendPhoto",
+                        data={"chat_id": chat_id, "caption": caption},
+                        files={"photo": fp},
+                        timeout=10,
+                    )
+            else:
                 response = requests.post(
-                    f"{base_url}/sendPhoto",
-                    data={"chat_id": chat_id, "caption": caption},
-                    files={"photo": fp},
+                    f"{base_url}/sendMessage",
+                    data={"chat_id": chat_id, "text": caption},
                     timeout=10,
                 )
-        else:
-            response = requests.post(
-                f"{base_url}/sendMessage",
-                data={"chat_id": chat_id, "text": caption},
-                timeout=10,
+            response.raise_for_status()
+            payload = response.json()
+            results.append(
+                {
+                    "chat_id": chat_id,
+                    "ok": bool(payload.get("ok", False)),
+                    "result_message_id": ((payload.get("result") or {}).get("message_id")),
+                }
             )
-        response.raise_for_status()
-        payload = response.json()
         return {
             "channel": "telegram",
             "status": "sent",
-            "ok": bool(payload.get("ok", False)),
-            "result_message_id": ((payload.get("result") or {}).get("message_id")),
+            "recipient_count": len(results),
+            "results": results,
         }
     except Exception as exc:
         return {
