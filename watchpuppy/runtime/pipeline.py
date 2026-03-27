@@ -11,6 +11,7 @@ from urllib import request
 from watchpuppy.runtime.config import WatchPuppySettings
 from watchpuppy.runtime.logging_runtime import current_transaction_id, transaction_logging
 from watchpuppy.runtime.notifier import send_failed_get_up_alert
+from watchpuppy.runtime.picmosaic_meta import append_picmosaic_index_online
 from watchpuppy.runtime.review_queue import write_review_queue_item
 from watchpuppy.runtime.watchdog_bridge import run_watchdog_capture_once
 from watchpuppy.upstream.yolo_shrink import YoloShrinkConfig, _build_detector, shrink_single_snapshot
@@ -147,6 +148,11 @@ class WatchPuppyRuntime:
             "notification": notification,
         }
         metadata_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        picmosaic_record = append_picmosaic_index_online(
+            artifacts_root=self.settings.storage.artifacts_dir,
+            metadata_path=metadata_path,
+            payload=payload,
+        )
 
         queue_item = {
             "event_id": event_id,
@@ -183,6 +189,7 @@ class WatchPuppyRuntime:
                     "classifier_score": float(prediction["score"]),
                     "threshold": float(prediction["threshold"]),
                     "notification": notification,
+                    "picmosaic_appended": bool(picmosaic_record),
                 },
                 ensure_ascii=False,
             )

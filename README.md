@@ -1,135 +1,159 @@
 # WatchPuppy
 
-WatchPuppy is a fresh follow-up project to WatchDog.
-
-The current goal is intentionally narrow:
-
-- input: `snapshot.jpg`
-- upstream gate: YOLO dog detection only
-- discard frames with other objects such as person/cat
-- downstream model: CNN image classifier
-- target label: `failed_get_up_attempt`
-- training truth: reviewed labels from WatchDog `Gen1` through `Gen5`
-
-## Scope
-
-This project is not trying to solve broad pet behavior recognition.
-It focuses on a single binary question:
+WatchPuppy is a low-power edge AI pipeline for a single operational question:
 
 - `failed_get_up_attempt`
-- `non_target`
+- or `non_target`
 
-## Planned Structure
+The current runtime is live and built around:
+
+- TAPO ONVIF `pet` events only
+- Hailo/YOLO front-stage shrink generation
+- `mobilenet_v3_small` snapshot classifier
+- Telegram alerting
+- review web
+- PicMosaic upstream index generation
+
+## Current Runtime Flow
 
 ```text
-WatchPuppy/
-  data/
-    raw/
-    interim/
-    processed/
-  docs/
-  scripts/
-  watchpuppy/
-    data/
-    datasets/
-    runtime/
-    upstream/
-    models/
-    training/
-    inference/
+TAPO ONVIF pet event
+  -> WatchPuppy collector
+  -> WatchDog-derived snapshot capture (internalized app/)
+  -> YOLO/Hailo dog-only shrink
+  -> context/detection filtering
+  -> always-on CNN inference server
+  -> metadata + review_queue + optional Telegram
+  -> PicMosaic index append
 ```
 
-## Initial Plan
+## Current Operational Rules
 
-1. Export reviewed WatchDog snapshots and labels from `Gen1` to `Gen5`
-2. Build a clean binary dataset:
-   - positive: `failed_get_up_attempt`
-   - negative: everything else
-3. Train a small pretrained CNN on snapshots
-4. Evaluate on held-out samples before any runtime integration
+- trigger source: `pet` only
+- general `motion`: ignored
+- only YOLO `dog` detections may proceed to CNN
+- `person` / `cat` context may block downstream classification
+- clip capture is disabled
+- runtime is effectively snapshot-only
 
-## Current Dataset Import Contract
+## Runtime Services
+
+- `watchpuppy-review-web.service`
+- `watchpuppy-cnn-inference.service`
+- `watchpuppy-onvif-gated@a.service`
+- `watchpuppy-onvif-gated@b.service`
+- `watchpuppy-onvif-gated@c.service`
+
+## Shared Runtime Environments
+
+- Hailo runtime:
+  - `/home/moai/Workspace/Codex/Runtime/Hailo/.venv`
+- PyTorch runtime:
+  - `/home/moai/Workspace/Codex/Runtime/PyTorch/.venv`
+- Web runtime:
+  - `/home/moai/Workspace/Codex/Runtime/Web/.venv`
+
+## Main Paths
+
+- artifacts:
+  - `/home/moai/Workspace/Codex/WatchPuppy/artifacts`
+- review queue:
+  - `/home/moai/Workspace/Codex/WatchPuppy/review_queue`
+- logs:
+  - `/home/moai/Workspace/Codex/WatchPuppy/logs`
+- runtime config:
+  - `/home/moai/Workspace/Codex/WatchPuppy/configs/watchpuppy.tapo.yaml`
+- service env:
+  - `/home/moai/Workspace/Codex/WatchPuppy/configs/watchpuppy.env`
+
+## Model
+
+Current production checkpoint:
+
+- [failed_get_up_mobilenet_v3_small.pt](/home/moai/Workspace/Codex/WatchPuppy/data/interim/models/final_shrink_mobilenet5/failed_get_up_mobilenet_v3_small.pt)
+
+Current serving shape:
+
+- input: `snapshot_shrink.jpg`
+- image size: `96 x 96`
+- backbone: `mobilenet_v3_small`
+- threshold: `0.8`
+
+## Training Data
+
+Initial training truth came from reviewed WatchDog data:
 
 - source review DB:
   - `/home/moai/Workspace/Codex/WatchDog/review_web/data/review_web.sqlite3`
-- source artifacts root:
-  - `/home/moai/Workspace/Codex/WatchDog`
 - included epochs:
-  - `Gen1`, `Gen2`, `Gen3`, `Gen4`, `Gen5`
+  - `Gen1` through `Gen5`
 - included review status:
   - `approved`
-- binary target:
-  - positive: `failed_get_up_attempt`
-  - negative: every other approved review label
+- positive class:
+  - `failed_get_up_attempt`
+- negative class:
+  - every other approved label
 
-## Local Import
+## Important Scripts
 
-Create a local binary snapshot dataset with:
+- import WatchDog dataset:
+  - `python scripts/import_watchdog_dataset.py`
+- create splits:
+  - `python scripts/create_dataset_splits.py`
+- train CNN:
+  - `python scripts/train_cnn.py`
+- rebuild PicMosaic index in bulk:
+  - `python scripts/rebuild_picmosaic_index.py`
+- inspect Telegram updates:
+  - `./scripts/get_telegram_updates.py`
+- send Telegram image test:
+  - `./scripts/send_telegram_test_alert.py`
 
-```bash
-python scripts/import_watchdog_dataset.py
-```
+## PicMosaic Upstream
 
-By default this will:
+WatchPuppy now maintains only:
 
-- read reviewed labels from WatchDog
-- import `snapshot.jpg` into `data/raw/watchdog_snapshots/`
-- create hard links when possible
-- write a binary manifest to:
-  - `data/processed/gen1_gen5_failed_get_up_binary.csv`
+- `/home/moai/Workspace/Codex/WatchPuppy/artifacts/picmosaic-index.json`
 
-## Dataset Splits
+Rules:
 
-Create stratified train/val/test manifests with:
+- `RUN*__...` artifacts only
+- `shrink_status == "cropped"` only
+- exclude events where `snapshot.jpg` and `snapshot_shrink.jpg` are identical
+- file order is `old first, latest last`
+- PicMosaic reverses in memory for UI display
 
-```bash
-python scripts/create_dataset_splits.py
-```
+Bulk rebuild and online append are intentionally separated:
 
-Default split ratios:
+- online:
+  - `append_picmosaic_index_online(...)`
+- bulk:
+  - `rebuild_picmosaic_index_bulk(...)`
 
-- train: `0.70`
-- val: `0.15`
-- test: `0.15`
+## Logging
 
-## CNN Training
+Structured daily logs:
 
-Train the first binary CNN baseline with:
+- `backbone-YYYYMMDD.log`
+- `front_yolo_process-YYYYMMDD.log`
+- `backend_cnn_process-YYYYMMDD.log`
 
-```bash
-python scripts/train_cnn.py
-```
+Camera raw stderr logs:
 
-Outputs:
+- `hef_camera_a-YYYYMMDD.log`
+- `hef_camera_b-YYYYMMDD.log`
+- `hef_camera_c-YYYYMMDD.log`
 
-- model weights under `data/interim/models/`
-- train/val history and test metrics as JSON
+All structured logs include:
 
-Note:
+- datetime
+- `trx:<transaction-id>`
+- `prod|debug` mode support
 
-- this step requires `torch` and `torchvision`
-- the current baseline model is intentionally small: `simple_cnn`
+## Review Web
 
-## Architecture Direction
+The review UI stores records by:
 
-The codebase is split so that input connectors can change later without
-changing the CNN training or inference core.
+- `review_key = epoch::event_id`
 
-- `watchpuppy.upstream`
-  - adapters/connectors that yield input records
-  - current implementation: WatchDog reviewed snapshot import
-  - future implementation: TAPO pull based runtime connector
-- `watchpuppy.datasets`
-  - manifest parsing and binary dataset views
-- `watchpuppy.models`
-  - CNN definitions and model loading
-- `watchpuppy.training`
-  - training loops and evaluation helpers
-- `watchpuppy.runtime`
-  - runtime orchestration around upstream input and model inference
-
-The intended long-term flow is:
-
-1. upstream connector yields a dog-only snapshot candidate
-2. runtime applies ignore rules for non-dog context when needed
-3. CNN predicts `failed_get_up_attempt` vs `non_target`
+This allows the same base `event_id` to coexist across generations.
