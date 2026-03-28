@@ -39,6 +39,16 @@ Role:
 - apply cooldown
 - invoke snapshot capture and downstream processing
 
+Current stability protections:
+
+- explicit HTTP operation timeout is applied to ONVIF SOAP calls
+- `PullMessages()` failure triggers full ONVIF context rebuild
+  - camera
+  - events service
+  - pullpoint subscription
+- pull heartbeat is logged periodically so silent stalls are visible
+- long-lived idle state and true stalled state are now easier to distinguish
+
 ### 2. Capture Layer
 
 Current implementation still uses the internalized WatchDog `app/` tree.
@@ -55,6 +65,12 @@ Current mode:
 - snapshot-oriented upstream
 - RTSP persistent connection enabled for the OpenCV ingest backend
 - on trigger, WatchPuppy reuses the live RTSP session and grabs a fresh frame instead of reconnecting
+
+Observed tradeoff:
+
+- persistent RTSP reduces snapshot latency
+- but TAPO event timing is still camera-local, not cross-camera synchronized
+- intermittent `camera_read_failed` can still occur during event-time frame acquisition
 
 ### 3. Front YOLO Stage
 
@@ -213,3 +229,6 @@ Path:
 - default Telegram delivery is text-only
 - structured logging and camera stderr logging are intentionally separated
 - stream relay is intentionally separate from ONVIF/CNN services
+- backbone logging now distinguishes:
+  - ONVIF pull subscription / rebuild / heartbeat state
+  - RTSP read degradation / recovery state

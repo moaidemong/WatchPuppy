@@ -38,6 +38,9 @@ TAPO ONVIF pet event
 - runtime is effectively snapshot-only
 - Telegram defaults to text-only alert delivery
 - Telegram photo delivery is opt-in via env
+- ONVIF pull has explicit HTTP timeout protection and periodic heartbeat logging
+- ONVIF pull failures rebuild the full pull context instead of only resubscribing
+- camera-to-camera event timing is not assumed to be synchronized
 
 ## Runtime Services
 
@@ -178,6 +181,13 @@ All structured logs include:
 - datetime
 - `trx:<transaction-id>`
 - `prod|debug` mode support
+
+Backbone now also emits:
+
+- `subscription_xaddr` on ONVIF subscription creation
+- `pull_heartbeat` during healthy idle pull operation
+- `pull_messages_failed` with rebuild intent on ONVIF stall/failure
+- RTSP `degraded` / `recovered` state around event-time frame acquisition
 
 ## Review Web
 

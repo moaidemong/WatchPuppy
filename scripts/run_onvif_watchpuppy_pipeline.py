@@ -33,8 +33,10 @@ def main() -> None:
     parser.add_argument("--onvif-port", type=int, default=2020)
     parser.add_argument("--duration-seconds", type=int, default=300)
     parser.add_argument("--pull-timeout-seconds", type=int, default=5)
+    parser.add_argument("--operation-timeout-seconds", type=float, default=15.0)
     parser.add_argument("--message-limit", type=int, default=20)
     parser.add_argument("--cooldown-seconds", type=int, default=20)
+    parser.add_argument("--heartbeat-seconds", type=float, default=60.0)
     parser.add_argument("--reconnect-delay-seconds", type=float, default=3.0)
     parser.add_argument("--pipeline-lock-file")
     parser.add_argument("--wsdl-dir")
@@ -52,6 +54,7 @@ def main() -> None:
     try:
         from onvif import ONVIFCamera
         from zeep.helpers import serialize_object
+        from zeep.transports import Transport
     except ImportError as exc:
         raise RuntimeError("ONVIF dependency is required.") from exc
 
@@ -59,29 +62,33 @@ def main() -> None:
     target = resolve_probe_target(watchdog_settings, args.camera_id)
     wsdl_dir = discover_wsdl_dir(args.wsdl_dir)
 
-    camera = ONVIFCamera(
-        target.host,
-        args.onvif_port,
-        target.username,
-        target.password,
-        str(wsdl_dir),
-    )
-    events_service = camera.create_events_service()
     runtime = WatchPuppyRuntime(settings=settings, epoch=epoch)
-    pullpoint_service = _create_pullpoint_service_with_retry(
-        camera,
-        events_service,
-        serialize_object,
-        max(1, args.duration_seconds),
+    transport = None
+    camera = None
+    events_service = None
+    pullpoint_service = None
+    transport, camera, events_service, pullpoint_service = _build_onvif_context(
+        target=target,
+        onvif_port=args.onvif_port,
+        wsdl_dir=wsdl_dir,
+        operation_timeout_seconds=max(float(args.pull_timeout_seconds) + 2.0, args.operation_timeout_seconds),
+        duration_seconds=max(1, args.duration_seconds),
         reconnect_delay_seconds=max(0.0, args.reconnect_delay_seconds),
         camera_id=args.camera_id,
         quiet=args.quiet,
+        ONVIFCamera=ONVIFCamera,
+        Transport=Transport,
+        serialize_object=serialize_object,
     )
 
     last_trigger_at: dict[str, float] = {}
     total_messages = 0
     topic_counts: Counter[str] = Counter()
     trigger_counts: Counter[str] = Counter()
+    consecutive_pull_failures = 0
+    last_pull_return_at = time.monotonic()
+    last_pull_return_wallclock = _utc_now_iso()
+    next_heartbeat_at = time.monotonic() + max(1.0, args.heartbeat_seconds)
     deadline = None if args.duration_seconds <= 0 else time.monotonic() + args.duration_seconds
 
     try:
@@ -96,32 +103,72 @@ def main() -> None:
             except KeyboardInterrupt:
                 raise
             except Exception as exc:
+                consecutive_pull_failures += 1
                 if not args.quiet:
                     logger.warning(
                         json.dumps(
                             {
                                 "camera_id": args.camera_id,
                                 "warning": "pull_messages_failed",
+                                "state": "degraded",
+                                "consecutive_failures": consecutive_pull_failures,
                                 "error": str(exc),
-                                "action": "resubscribe",
+                                "action": "rebuild_and_resubscribe",
                             },
                             ensure_ascii=False,
                         )
                     )
+                _close_pullpoint_service(pullpoint_service)
+                _close_transport(transport)
                 time.sleep(max(0.0, args.reconnect_delay_seconds))
-                pullpoint_service = _create_pullpoint_service_with_retry(
-                    camera,
-                    events_service,
-                    serialize_object,
-                    max(1, args.duration_seconds),
+                transport, camera, events_service, pullpoint_service = _build_onvif_context(
+                    target=target,
+                    onvif_port=args.onvif_port,
+                    wsdl_dir=wsdl_dir,
+                    operation_timeout_seconds=max(float(args.pull_timeout_seconds) + 2.0, args.operation_timeout_seconds),
+                    duration_seconds=max(1, args.duration_seconds),
                     reconnect_delay_seconds=max(0.0, args.reconnect_delay_seconds),
                     camera_id=args.camera_id,
                     quiet=args.quiet,
+                    ONVIFCamera=ONVIFCamera,
+                    Transport=Transport,
+                    serialize_object=serialize_object,
                 )
                 continue
 
             serialized = serialize_object(response)
             messages = serialized.get("NotificationMessage") or []
+            last_pull_return_at = time.monotonic()
+            last_pull_return_wallclock = _utc_now_iso()
+            if consecutive_pull_failures > 0 and not args.quiet:
+                logger.info(
+                    json.dumps(
+                        {
+                            "camera_id": args.camera_id,
+                            "state": "recovered",
+                            "reason": "pull_messages_returned",
+                            "recovered_after_failures": consecutive_pull_failures,
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+            consecutive_pull_failures = 0
+            if not args.quiet and last_pull_return_at >= next_heartbeat_at:
+                logger.info(
+                    json.dumps(
+                        {
+                            "camera_id": args.camera_id,
+                            "state": "connected",
+                            "reason": "pull_heartbeat",
+                            "last_pull_return_at": last_pull_return_wallclock,
+                            "messages_in_batch": len(messages),
+                            "total_messages": total_messages,
+                            "trigger_counts": dict(trigger_counts),
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+                next_heartbeat_at = last_pull_return_at + max(1.0, args.heartbeat_seconds)
             for message in messages:
                 total_messages += 1
                 event = parse_notification_message(message)
@@ -174,10 +221,44 @@ def main() -> None:
             )
     finally:
         runtime.close()
-        try:
-            pullpoint_service.Unsubscribe()
-        except Exception:
-            logger.debug("pullpoint unsubscribe failed", exc_info=True)
+        _close_pullpoint_service(pullpoint_service)
+        _close_transport(transport)
+
+
+def _build_onvif_context(
+    *,
+    target,
+    onvif_port: int,
+    wsdl_dir: Path,
+    operation_timeout_seconds: float,
+    duration_seconds: int,
+    reconnect_delay_seconds: float,
+    camera_id: str,
+    quiet: bool,
+    ONVIFCamera,
+    Transport,
+    serialize_object,
+):
+    transport = Transport(timeout=300, operation_timeout=operation_timeout_seconds)
+    camera = ONVIFCamera(
+        target.host,
+        onvif_port,
+        target.username,
+        target.password,
+        str(wsdl_dir),
+        transport=transport,
+    )
+    events_service = camera.create_events_service()
+    pullpoint_service = _create_pullpoint_service_with_retry(
+        camera,
+        events_service,
+        serialize_object,
+        duration_seconds,
+        reconnect_delay_seconds=reconnect_delay_seconds,
+        camera_id=camera_id,
+        quiet=quiet,
+    )
+    return transport, camera, events_service, pullpoint_service
 
 
 def _extract_subscription_xaddr(subscription_data: dict[str, object]) -> str:
@@ -214,24 +295,41 @@ def _create_pullpoint_service_with_retry(
     camera_id: str,
     quiet: bool,
 ):
+    consecutive_failures = 0
     while True:
         try:
-            return _create_pullpoint_service(
+            service = _create_pullpoint_service(
                 camera,
                 events_service,
                 serialize_object,
                 duration_seconds,
                 quiet=quiet,
             )
+            if not quiet and consecutive_failures > 0:
+                logger.info(
+                    json.dumps(
+                        {
+                            "camera_id": camera_id,
+                            "state": "recovered",
+                            "reason": "pullpoint_subscription_created",
+                            "recovered_after_failures": consecutive_failures,
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+            return service
         except KeyboardInterrupt:
             raise
         except Exception as exc:
+            consecutive_failures += 1
             if not quiet:
                 logger.warning(
                     json.dumps(
                         {
                             "camera_id": camera_id,
                             "warning": "create_pullpoint_subscription_failed",
+                            "state": "degraded",
+                            "consecutive_failures": consecutive_failures,
                             "error": str(exc),
                             "action": "retry",
                         },
@@ -239,6 +337,28 @@ def _create_pullpoint_service_with_retry(
                     )
                 )
             time.sleep(reconnect_delay_seconds)
+
+
+def _close_pullpoint_service(pullpoint_service) -> None:
+    if pullpoint_service is None:
+        return
+    try:
+        pullpoint_service.Unsubscribe()
+    except Exception:
+        logger.debug("pullpoint unsubscribe failed", exc_info=True)
+
+
+def _close_transport(transport) -> None:
+    if transport is None:
+        return
+    try:
+        transport.session.close()
+    except Exception:
+        logger.debug("transport session close failed", exc_info=True)
+
+
+def _utc_now_iso() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
 @contextmanager

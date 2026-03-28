@@ -16,6 +16,12 @@ Working assumptions:
   - OpenCV backend keeps the RTSP connection open across events when `ingest.persistent_connection` is true
   - live TAPO config currently enables this mode
   - goal is lower snapshot latency after ONVIF `pet` trigger without reintroducing clip capture
+  - this improves immediacy, but does not guarantee cross-camera temporal alignment
+  - TAPO may still emit `pet` events at different moments per camera for the same real-world scene
+- ONVIF pull policy:
+  - collector uses explicit SOAP/HTTP operation timeout protection
+  - `PullMessages()` failure rebuilds the ONVIF context instead of only resubscribing
+  - periodic pull heartbeat logs are used to detect silent stalls
 - alert delivery policy:
   - Telegram send is asynchronous
   - default mode is text-only
