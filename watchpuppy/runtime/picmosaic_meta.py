@@ -46,7 +46,7 @@ def append_picmosaic_index_online(
 
     index_path = artifacts_root / INDEX_NAME
     index_payload = load_index(index_path, artifacts_root)
-    items = list(index_payload.get("items", []))
+    items = [sanitize_index_item(item) for item in index_payload.get("items", [])]
     artifact_key = event_dir.name
     if any(item.get("id") == artifact_key for item in items):
         return None
@@ -89,7 +89,7 @@ def rebuild_picmosaic_index_bulk(artifacts_root: Path) -> None:
     remove_legacy_meta_files(artifacts_root)
     index_path = artifacts_root / INDEX_NAME
     index_payload = load_index(index_path, artifacts_root)
-    items = list(index_payload.get("items", []))
+    items = [sanitize_index_item(item) for item in index_payload.get("items", [])]
     normalize_items_in_place(items)
     index_payload["schemaVersion"] = SCHEMA_VERSION
     index_payload["count"] = len(items)
@@ -140,12 +140,32 @@ def build_index_item(
         "width": width,
         "height": height,
         "aspectRatio": width / height if height else 0.0,
-        "imagePath": str(shrink_path.resolve()),
-        "thumbPath": str(shrink_path.resolve()),
         "imageUrl": public_url,
         "thumbUrl": public_url,
         "fixedTone": fixed_tone,
         "colored": colored,
+    }
+
+
+def sanitize_index_item(item: dict[str, Any]) -> dict[str, Any]:
+    width = int(item.get("width", 0))
+    height = int(item.get("height", 0))
+    aspect_ratio = item.get("aspectRatio")
+    if aspect_ratio is None:
+        aspect_ratio = (width / height) if height else 0.0
+
+    return {
+        "id": str(item.get("id", "")),
+        "artifactKey": str(item.get("artifactKey") or item.get("id", "")),
+        "sequence": int(item.get("sequence", 0)),
+        "capturedAt": str(item.get("capturedAt", "")),
+        "width": width,
+        "height": height,
+        "aspectRatio": float(aspect_ratio),
+        "imageUrl": str(item.get("imageUrl", "")),
+        "thumbUrl": str(item.get("thumbUrl") or item.get("imageUrl", "")),
+        "fixedTone": item.get("fixedTone"),
+        "colored": bool(item.get("colored", False)),
     }
 
 
