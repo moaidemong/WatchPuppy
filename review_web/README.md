@@ -16,6 +16,12 @@ Typical external access:
 
 - Caddy reverse proxy on `:8088`
 
+Separate runtime relay endpoints are not part of review web itself:
+
+- `a`: `http://192.168.219.109:10111/stream.ts`
+- `b`: `http://192.168.219.109:10112/stream.ts`
+- `c`: `http://192.168.219.109:10113/stream.ts`
+
 ## Data Source
 
 The UI syncs from:

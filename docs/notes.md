@@ -12,3 +12,16 @@ Working assumptions:
 - PicMosaic maintenance policy:
   - online single-event append
   - bulk rebuild as a separate maintenance operation
+- RTSP ingest policy:
+  - OpenCV backend keeps the RTSP connection open across events when `ingest.persistent_connection` is true
+  - live TAPO config currently enables this mode
+  - goal is lower snapshot latency after ONVIF `pet` trigger without reintroducing clip capture
+- alert delivery policy:
+  - Telegram send is asynchronous
+  - default mode is text-only
+  - photo mode is opt-in through `WATCHPUPPY_TELEGRAM_SEND_PHOTO`
+- operator viewing policy:
+  - separate `watchpuppy-stream@*` services expose viewing endpoints
+  - current relay backend is `ffmpeg`
+  - output format is HTTP MPEG-TS at `/stream.ts`
+  - relay/viewing is intentionally independent from the detection pipeline

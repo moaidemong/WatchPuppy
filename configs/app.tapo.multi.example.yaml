@@ -10,6 +10,7 @@ ingest:
   camera_index: 0
   device_path:
   rtsp_url:
+  persistent_connection: true
   sample_fps: 1.0
   max_frames: 20
   frame_width:

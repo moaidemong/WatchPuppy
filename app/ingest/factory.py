@@ -19,6 +19,7 @@ def build_frame_source(settings: IngestSettings, cameras: list[CameraSettings] |
                 camera_index=settings.camera_index,
                 device_path=settings.device_path,
                 rtsp_url=selected_camera.rtsp_url if selected_camera else settings.rtsp_url,
+                persistent_connection=settings.persistent_connection,
                 sample_fps=settings.sample_fps,
                 max_frames=settings.max_frames,
                 camera_id=(selected_camera.camera_id if selected_camera else settings.camera_id),

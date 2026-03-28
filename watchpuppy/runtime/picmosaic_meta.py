@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 import tempfile
 from typing import Any
@@ -194,4 +195,6 @@ def write_json_atomically(path: Path, payload: dict[str, Any]) -> None:
         json.dump(payload, tmp, ensure_ascii=False, indent=2)
         tmp.write("\n")
         tmp_path = Path(tmp.name)
+    os.chmod(tmp_path, 0o644)
     tmp_path.replace(path)
+    os.chmod(path, 0o644)

@@ -21,6 +21,7 @@ class IngestSettings:
     camera_index: int
     device_path: str | None
     rtsp_url: str | None
+    persistent_connection: bool
     sample_fps: float
     max_frames: int | None
     frame_width: int | None
@@ -130,6 +131,7 @@ def load_settings(path: str | Path) -> Settings:
             camera_index=ingest.get("camera_index", 0),
             device_path=ingest.get("device_path"),
             rtsp_url=_expand_env(ingest.get("rtsp_url")),
+            persistent_connection=ingest.get("persistent_connection", False),
             sample_fps=ingest.get("sample_fps", 2.0),
             max_frames=ingest.get("max_frames", 60),
             frame_width=ingest.get("frame_width"),

@@ -13,6 +13,7 @@ The current runtime is live and built around:
 - Telegram alerting
 - review web
 - PicMosaic upstream index generation
+- optional relay stream endpoints
 
 ## Current Runtime Flow
 
@@ -35,6 +36,8 @@ TAPO ONVIF pet event
 - `person` / `cat` context may block downstream classification
 - clip capture is disabled
 - runtime is effectively snapshot-only
+- Telegram defaults to text-only alert delivery
+- Telegram photo delivery is opt-in via env
 
 ## Runtime Services
 
@@ -43,6 +46,9 @@ TAPO ONVIF pet event
 - `watchpuppy-onvif-gated@a.service`
 - `watchpuppy-onvif-gated@b.service`
 - `watchpuppy-onvif-gated@c.service`
+- `watchpuppy-stream@a.service`
+- `watchpuppy-stream@b.service`
+- `watchpuppy-stream@c.service`
 
 ## Shared Runtime Environments
 
@@ -65,6 +71,27 @@ TAPO ONVIF pet event
   - `/home/moai/Workspace/Codex/WatchPuppy/configs/watchpuppy.tapo.yaml`
 - service env:
   - `/home/moai/Workspace/Codex/WatchPuppy/configs/watchpuppy.env`
+
+## Optional Stream Relay
+
+Per-camera relay endpoints:
+
+- `a`
+  - `http://192.168.219.109:10111/stream.ts`
+- `b`
+  - `http://192.168.219.109:10112/stream.ts`
+- `c`
+  - `http://192.168.219.109:10113/stream.ts`
+
+Current implementation:
+
+- separate `watchpuppy-stream@*` services
+- `ffmpeg` relay
+- RTSP input from TAPO
+- `-c:v copy`
+- HTTP MPEG-TS output
+
+This replaced the heavier OpenCV MJPEG re-encode path.
 
 ## Model
 
@@ -108,6 +135,8 @@ Initial training truth came from reviewed WatchDog data:
   - `./scripts/get_telegram_updates.py`
 - send Telegram image test:
   - `./scripts/send_telegram_test_alert.py`
+- print one camera RTSP URL:
+  - `./scripts/print_camera_rtsp_url.py`
 
 ## PicMosaic Upstream
 

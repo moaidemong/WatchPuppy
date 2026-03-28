@@ -10,7 +10,7 @@ from urllib import request
 
 from watchpuppy.runtime.config import WatchPuppySettings
 from watchpuppy.runtime.logging_runtime import current_transaction_id, transaction_logging
-from watchpuppy.runtime.notifier import send_failed_get_up_alert
+from watchpuppy.runtime.notifier import send_failed_get_up_alert_async
 from watchpuppy.runtime.picmosaic_meta import append_picmosaic_index_online
 from watchpuppy.runtime.review_queue import write_review_queue_item
 from watchpuppy.runtime.watchdog_bridge import run_watchdog_capture_once
@@ -127,13 +127,14 @@ class WatchPuppyRuntime:
 
         notification: dict[str, Any] | None = None
         if prediction["label"] == "failed_get_up_attempt":
-            notification = send_failed_get_up_alert(
+            notification = send_failed_get_up_alert_async(
                 event_id=event_id,
                 camera_id=camera_id,
                 epoch=self.epoch,
                 score=float(prediction["score"]),
                 threshold=float(prediction["threshold"]),
                 snapshot_path=snapshot_path,
+                transaction_id=current_transaction_id(),
             )
 
         payload["watchpuppy"] = {

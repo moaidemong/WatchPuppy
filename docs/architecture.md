@@ -16,6 +16,14 @@ ONVIF pet trigger
   -> PicMosaic index append
 ```
 
+Separate optional viewing path:
+
+```text
+TAPO RTSP
+  -> ffmpeg relay
+  -> per-camera HTTP MPEG-TS endpoint
+```
+
 ## Main Components
 
 ### 1. Collector Runtime
@@ -45,6 +53,8 @@ Current mode:
 
 - clip disabled
 - snapshot-oriented upstream
+- RTSP persistent connection enabled for the OpenCV ingest backend
+- on trigger, WatchPuppy reuses the live RTSP session and grabs a fresh frame instead of reconnecting
 
 ### 3. Front YOLO Stage
 
@@ -89,7 +99,44 @@ Current key:
 
 - `review_key = epoch::event_id`
 
-### 6. PicMosaic Upstream
+### 6. Telegram Alerting
+
+Role:
+
+- notify operators when runtime predicts `failed_get_up_attempt`
+
+Current mode:
+
+- async queueing from the main pipeline
+- recipient sends in parallel
+- default delivery is text-only
+- photo delivery is optional through env
+
+### 7. Stream Relay Layer
+
+Role:
+
+- provide lightweight operator viewing endpoints
+- keep viewing separated from the detection runtime
+
+Current implementation:
+
+- systemd units:
+  - `watchpuppy-stream@a.service`
+  - `watchpuppy-stream@b.service`
+  - `watchpuppy-stream@c.service`
+- port mapping:
+  - `a -> 10111`
+  - `b -> 10112`
+  - `c -> 10113`
+- transport:
+  - RTSP input
+  - `ffmpeg` relay
+  - HTTP MPEG-TS output at `/stream.ts`
+
+This replaced the earlier OpenCV decode/re-encode MJPEG server.
+
+### 8. PicMosaic Upstream
 
 Role:
 
@@ -162,4 +209,7 @@ Path:
 - general motion is disabled
 - detector context may still block downstream decisions
 - Telegram alerting is optional and env-driven
+- Telegram no longer blocks the main detection path
+- default Telegram delivery is text-only
 - structured logging and camera stderr logging are intentionally separated
+- stream relay is intentionally separate from ONVIF/CNN services
